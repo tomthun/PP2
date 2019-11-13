@@ -55,4 +55,4 @@ def opendata(form):
         print('Saved and Done!')
     return dic
 
-opendata('64embeddings')
+dic = opendata('64embeddings')
