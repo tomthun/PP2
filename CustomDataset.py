@@ -10,7 +10,8 @@ from torch.utils.data import Dataset
 class CustomDataset(Dataset):
     def __init__(self, dic):
         self.dic = dic
-     
+        self.longestProt = len(max(dic['Labels'],key = len))
+        
     def __len__(self):
         return len(self.dic['Header'])   
     
@@ -20,9 +21,4 @@ class CustomDataset(Dataset):
         protein = self.dic['Header'][idx]
         seq = self.dic['Sequence'][idx]
         return data,labels,protein,seq
-    
-    def my_collate(batch):
-        data = [item[0] for item in batch]
-        target = [item[1] for item in batch]
-        target = torch.LongTensor(target)
-        return [data, target]
+   
