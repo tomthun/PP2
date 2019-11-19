@@ -15,7 +15,7 @@ from CustomDataset import CustomDataset
 from CNN import SimpleCNN
 import sklearn.metrics as metrics
 import torch
-params = {'batch_size': 100,
+params = {'batch_size': 50,
           'shuffle': True,
           'num_workers': 0}
 splits = 4 # specify the number of wanted data splits, counting starts at 0,      
@@ -24,9 +24,9 @@ validation_split = 1 # select validation split (must be in the range of defined 
 benchmark_split = 0 # select benchmark split (must be in the range of defined splits)
 form = '64' # either '64'or '1024': select 64 or 1024 embbedings 
 printafterepoch = 20
-no_crf = True  
+no_crf = False  
 num_epochs = 201
-learning_rate = 1e-3
+learning_rate = 1e-4
 num_classes = 3 # number of classes (currently 3: NES,NLS and no signal)
 inp, outp = int(form), num_classes # size of input and output layers
 dev = torch.device('cuda') # change to 'cpu' to use cpu
@@ -164,7 +164,7 @@ def train(model, train_loader, validation_loader, num_epochs, learning_rate, dev
                           acc, mcc_train))
             acc_valid, mcc_valid, loss_valid, cm_valid, label_predicted_batch_val = validate(validation_loader, model, dev, class_weights)
             out_params.append([mcc_train, mcc_valid, acc, acc_valid,loss_ave, loss_valid,
-                               cm_train, cm_valid, label_predicted_batch, label_predicted_batch_val])
+                               cm_train, cm_valid])
     return model, out_params, label_predicted_batch
 
 def validate(val_loader, model, dev, class_weights):
