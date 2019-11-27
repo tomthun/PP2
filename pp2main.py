@@ -9,24 +9,25 @@ os.chdir('C:\\Users\\Thomas\\Documents\\Uni_masters\\PP2')
 root = 'C:\\Users\\Thomas\\Documents\\Uni_masters\\ProteinPrediction2\\'
 import numpy as np
 import matplotlib.pyplot as plt
+import seaborn as sns
 import pickle
 from torch.utils.data import DataLoader
 from CustomDataset import CustomDataset
 from CNN import SimpleCNN
 import sklearn.metrics as metrics
 import torch
-params = {'batch_size': 50,
+params = {'batch_size': 20,
           'shuffle': True,
           'num_workers': 0}
 splits = 4 # specify the number of wanted data splits, counting starts at 0,      
            # e.g 4 splits = [0,1,2,3,4] splits (5)
 validation_split = 1 # select validation split (must be in the range of defined splits)
 benchmark_split = 0 # select benchmark split (must be in the range of defined splits)
-form = '64' # either '64'or '1024': select 64 or 1024 embbedings 
-printafterepoch = 20
-no_crf = False  
-num_epochs = 201
-learning_rate = 1e-4
+form = '1024' # either '64'or '1024': select 64 or 1024 embbedings 
+printafterepoch = 5
+no_crf = True  
+num_epochs = 51
+learning_rate = 1e-3
 num_classes = 3 # number of classes (currently 3: NES,NLS and no signal)
 inp, outp = int(form), num_classes # size of input and output layers
 dev = torch.device('cuda') # change to 'cpu' to use cpu
@@ -38,9 +39,24 @@ class_weights = torch.FloatTensor([1/403348, 1/7093, 1/939]).to(dev)
 def main(validation_split, benchmark_split, form):
     dic = opendata(form)
     train_loader,val_loader = splitdata(dic, validation_split)
-    model = SimpleCNN(num_classes, inp, outp).to(dev)
+    model = SimpleCNN(num_classes, inp, outp, dev).to(dev)
     model, out_params, label_predicted_batch = train(model,train_loader,val_loader, num_epochs, learning_rate, dev, class_weights)
     return out_params, label_predicted_batch
+
+def pltseab(dic):
+    plt.rcParams.update({'font.size': 16})
+    plt.figure()
+    NLS = [len(dic['Sequence'][key]) for key in range(len(dic['Data']))if 1 in dic['Labels'][key]]
+    NES = [len(dic['Sequence'][key]) for key in range(len(dic['Data']))if 2 in dic['Labels'][key]]
+    alle = [len(dic['Sequence'][key]) for key in range(len(dic['Data']))]
+
+    sns.kdeplot(NLS,label="Proteins with NLS")
+    sns.kdeplot(NES,label="Proteins with NES")
+    sns.kdeplot(alle, label="All proteins")
+
+    plt.xlabel('Protein length')
+    plt.ylabel('Frequency')
+    plt.title('Length distribution of proteins with NLS and NES')
     
 # =============================================================================
 # Load / preprocess data
@@ -80,7 +96,7 @@ def opendata(form):
     elif form == '1024':
         elmo = np.load(root+'\\npz\\nes_nls.npz',  mmap_mode='r' )
     try:       
-        print('Loading pickled benchmark files...')    
+        print('Loading pickled files...')    
         dic = pickle.load(open(root+'pickled_files\\dict'+form+'.pickle', 'rb'))   
     except (OSError, IOError):   
         print('No data found. Creating new dataframe.')
@@ -137,26 +153,26 @@ def train(model, train_loader, validation_loader, num_epochs, learning_rate, dev
             if no_crf:
                 loss = criterion(outputs, labels)
             else: 
-                loss = criterion(outputs, labels)
-                outputs = outputs.permute(2,0,1) 
-                loss = -model.crf(outputs, labels.permute(1,0), mask = mask.permute(1,0))+loss
+                loss = criterion(outputs, labels) 
+                outputs = outputs.permute(0,2,1)
+                loss = -model.crf(outputs, labels, mask = mask)+loss
                 
-            # Backprop and perform Adam optimisation
+            # Backprop and perform Adam optimization
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-    
+            
             # Track the accuracy, mcc and cm                    
             if (epoch%printafterepoch) == 0: 
                 if no_crf:
                     _, predicted = torch.max(outputs.data, 1)                
                     predicted = predicted.squeeze_()
                 else:
-                    predicted = torch.Tensor(model.crf.decode(outputs)).cuda()
+                    predicted = torch.Tensor(model.crf.decode(outputs)).to(dev)   
                 label_predicted_batch = orgaBatch(labels, predicted, label_predicted_batch, mask, protein, seq)
                 loss_train_list.append(loss.item())                  
         # and print the results
-        if (epoch%printafterepoch) == 0:            
+        if (epoch%printafterepoch) == 0:
             mcc_train, cm_train, acc = calcMCCbatch(label_predicted_batch[0], label_predicted_batch[1])
             loss_ave = sum(loss_train_list)/len(loss_train_list)
             print('Epoch [{}/{}], Step [{}/{}], Loss: {:.4f}, Accuracy: {:.2f}%, MCC: {:.2f}'
@@ -185,9 +201,9 @@ def validate(val_loader, model, dev, class_weights):
             else: 
                 # apply conditional random field and decode via Vertibri algorithm
                 loss = criterion(outputs, labels)
-                outputs = outputs.permute(2,0,1)
-                loss = -model.crf(outputs, labels.permute(1,0), mask = mask.permute(1,0))+loss
-                predicted = torch.Tensor(model.crf.decode(outputs)).cuda()
+                outputs = outputs.permute(0,2,1)
+                loss = -model.crf(outputs, labels, mask = mask)+loss
+                predicted = torch.Tensor(model.crf.decode(outputs)).to(dev)
             # calculate quality measurements
             label_predicted_batch = orgaBatch(labels, predicted, label_predicted_batch, mask, protein, seq)
             loss_list.append(loss.item())         
@@ -208,7 +224,6 @@ def orgaBatch (labels, predicted, label_predicted_batch, mask, protein, seq):
         label_predicted_batch[2].append(protein[x])
         label_predicted_batch[3].append(seq[x])
     return label_predicted_batch
-    
 
 def calcMCCbatch (labels_batch, predicted_batch):
 #   calculate MCC over given batches of an epoch in training/validation 

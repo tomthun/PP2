@@ -10,14 +10,14 @@ from torchcrf import CRF
 class SimpleCNN(nn.Module):
     
     # ToDo adapt CNN
-    def __init__(self,num_tags,inp,outp):
+    def __init__(self,num_tags,inp,outp,dev):
         super(SimpleCNN, self).__init__()
-        
+
         self.layer1 = nn.Sequential(
-            nn.Conv2d(inp, 64, kernel_size=(5,1),  padding = (2,0)), nn.LeakyReLU(), nn.Dropout2d(0.65), nn.BatchNorm2d(64)) 
+            nn.Conv2d(inp, 64, kernel_size=(7,1),  padding = (3,0)), nn.LeakyReLU(), nn.Dropout2d(0.65), nn.BatchNorm2d(64)) 
         self.layer2 = nn.Sequential(
-            nn.Conv2d(64, outp, kernel_size=(1,1),  padding=(0,0)), nn.LeakyReLU(), nn.Dropout2d(0.65), nn.BatchNorm2d(outp))
-        self.crf = CRF(num_tags)
+            nn.Conv2d(64, outp, kernel_size=(3,1),  padding=(1,0)), nn.LeakyReLU(), nn.Dropout2d(0.65), nn.BatchNorm2d(outp)) 
+        self.crf = CRF(num_tags,batch_first=True).to(dev)
     
     def forward(self, x):
         out = self.layer1(x)
