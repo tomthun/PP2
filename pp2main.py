@@ -190,7 +190,7 @@ def validate(val_loader, model, dev, class_weights):
         for i,(validation, labels, protein, seq, mask) in enumerate(val_loader):
             # preprocess outputs to correct format (1024*70*1)
             validation, labels, mask = validation.to(dev), labels.to(dev), mask.to(dev)
-            outputs = model(validation.unsqueeze(3))
+            outputs = model(validation)
             outputs.squeeze_()
             if no_crf:
                 # use CrossEntropyloss minimalization
