@@ -16,7 +16,7 @@ class SimpleCNN(nn.Module):
             nn.Conv2d(inp, 512, kernel_size=(1,1),  padding = (0,0)), nn.LeakyReLU(), nn.Dropout2d(0.65), nn.BatchNorm2d(512)) 
         self.attentionlayer = nn.TransformerEncoder(nn.TransformerEncoderLayer(d_model=512, nhead=1), num_layers=3)
         self.layer1 = nn.Sequential(
-            nn.Conv2d(32, 64, kernel_size=(7,1),  padding = (3,0)), nn.LeakyReLU(), nn.Dropout2d(0.65), nn.BatchNorm2d(64)) 
+            nn.Conv2d(512, 64, kernel_size=(7,1),  padding = (3,0)), nn.LeakyReLU(), nn.Dropout2d(0.65), nn.BatchNorm2d(64)) 
         self.layer2 = nn.Sequential(
             nn.Conv2d(64, outp, kernel_size=(3,1),  padding=(1,0)), nn.LeakyReLU(), nn.Dropout2d(0.65), nn.BatchNorm2d(outp)) 
         self.crf = CRF(num_tags,batch_first=True).to(dev)
