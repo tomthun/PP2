@@ -13,8 +13,8 @@ class SimpleCNN(nn.Module):
     def __init__(self,num_tags,inp,outp,dev):
         super(SimpleCNN, self).__init__()
         self.compLayer = nn.Sequential(
-            nn.Conv2d(inp, 32, kernel_size=(1,1),  padding = (0,0)), nn.LeakyReLU(), nn.Dropout2d(0.65), nn.BatchNorm2d(32)) 
-        self.attentionlayer = nn.TransformerEncoder(nn.TransformerEncoderLayer(d_model=32, nhead=1), num_layers=1)
+            nn.Conv2d(inp, 512, kernel_size=(1,1),  padding = (0,0)), nn.LeakyReLU(), nn.Dropout2d(0.65), nn.BatchNorm2d(512)) 
+        self.attentionlayer = nn.TransformerEncoder(nn.TransformerEncoderLayer(d_model=512, nhead=1), num_layers=3)
         self.layer1 = nn.Sequential(
             nn.Conv2d(32, 64, kernel_size=(7,1),  padding = (3,0)), nn.LeakyReLU(), nn.Dropout2d(0.65), nn.BatchNorm2d(64)) 
         self.layer2 = nn.Sequential(
