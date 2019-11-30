@@ -16,7 +16,7 @@ from CustomDataset import CustomDataset
 from CNN import SimpleCNN
 import sklearn.metrics as metrics
 import torch
-params = {'batch_size': 20,
+params = {'batch_size': 25,
           'shuffle': True,
           'num_workers': 0}
 splits = 4 # specify the number of wanted data splits, counting starts at 0,      
@@ -26,11 +26,11 @@ benchmark_split = 0 # select benchmark split (must be in the range of defined sp
 form = '1024' # either '64'or '1024': select 64 or 1024 embbedings 
 printafterepoch = 5
 no_crf = True  
-num_epochs = 51
+num_epochs = 1001
 learning_rate = 1e-3
 num_classes = 3 # number of classes (currently 3: NES,NLS and no signal)
 inp, outp = int(form), num_classes # size of input and output layers
-dev = torch.device('cuda') # change to 'cpu' to use cpu
+dev = torch.device('cpu') # change to 'cpu' to use cpu
 class_weights = torch.FloatTensor([1/403348, 1/7093, 1/939]).to(dev)
 # =============================================================================
 # Main functions
@@ -49,11 +49,9 @@ def pltseab(dic):
     NLS = [len(dic['Sequence'][key]) for key in range(len(dic['Data']))if 1 in dic['Labels'][key]]
     NES = [len(dic['Sequence'][key]) for key in range(len(dic['Data']))if 2 in dic['Labels'][key]]
     alle = [len(dic['Sequence'][key]) for key in range(len(dic['Data']))]
-
-    sns.kdeplot(NLS,label="Proteins with NLS")
+    sns.kdeplot(alle, label="All proteins") 
     sns.kdeplot(NES,label="Proteins with NES")
-    sns.kdeplot(alle, label="All proteins")
-
+    sns.kdeplot(NLS,label="Proteins with NLS")
     plt.xlabel('Protein length')
     plt.ylabel('Frequency')
     plt.title('Length distribution of proteins with NLS and NES')
@@ -127,11 +125,11 @@ def splitdata (dic, split):
 def my_collate(batch):
     seq = [item[3] for item in batch]
     longestprot = len(max(seq ,key = len))
-    data = [torch.cat((item[0],torch.tensor(np.zeros([int(form),longestprot-len(item[3])])).float()), 1).to(dev) for item in batch]
-    target = [torch.cat((item[1],torch.tensor(-np.ones(longestprot-len(item[3]))).long())).to(dev) for item in batch]
+    data = [torch.cat((item[0],torch.tensor(np.zeros([int(form),longestprot-len(item[3])])).float()), 1) for item in batch]
+    target = [torch.cat((item[1],torch.tensor(-np.ones(longestprot-len(item[3]))).long())) for item in batch]
     protein = [item[2] for item in batch]        
-    mask = [torch.ByteTensor(np.concatenate([np.ones(len(item[3])), np.zeros(longestprot-len(item[3]))])).int().to(dev) for item in batch]
-    return [torch.stack(data),torch.stack(target),protein,seq,torch.stack(mask).byte()]
+    mask = [torch.BoolTensor(np.concatenate([np.ones(len(item[3])), np.zeros(longestprot-len(item[3]))])) for item in batch]
+    return [torch.stack(data),torch.stack(target),protein,seq,torch.stack(mask).bool()]
 # =============================================================================
 # Train / validate data
 # =============================================================================
@@ -146,9 +144,9 @@ def train(model, train_loader, validation_loader, num_epochs, learning_rate, dev
         loss_train_list = []  
         label_predicted_batch = [[],[],[],[]]      
         for i, (train, labels, protein, seq, mask ) in enumerate(train_loader):
-            # Run the forward pass
-            train, labels, mask  = train.to(dev), labels.to(dev), mask.to(dev)
-            outputs = model(train.unsqueeze(3))
+            # Run the forward pass      
+            train, labels, mask  = train.to(dev), labels.to(dev), mask.to(dev)  
+            outputs = model(train)
             outputs = outputs.squeeze_()                   
             if no_crf:
                 loss = criterion(outputs, labels)
@@ -168,7 +166,7 @@ def train(model, train_loader, validation_loader, num_epochs, learning_rate, dev
                     _, predicted = torch.max(outputs.data, 1)                
                     predicted = predicted.squeeze_()
                 else:
-                    predicted = torch.Tensor(model.crf.decode(outputs)).to(dev)   
+                    predicted = torch.Tensor(model.crf.decode(outputs)).to(dev) 
                 label_predicted_batch = orgaBatch(labels, predicted, label_predicted_batch, mask, protein, seq)
                 loss_train_list.append(loss.item())                  
         # and print the results
@@ -218,9 +216,10 @@ def validate(val_loader, model, dev, class_weights):
     
 def orgaBatch (labels, predicted, label_predicted_batch, mask, protein, seq):
     #to do: apply in validate
+    labels, predicted, mask = labels.to('cpu'), predicted.to('cpu'), mask.to('cpu')
     for x in range(len(labels)):
-        label_predicted_batch[0].append(list(labels[x][mask[x]].to('cpu').numpy()))
-        label_predicted_batch[1].append(list(predicted[x][mask[x]].to('cpu').numpy()))
+        label_predicted_batch[0].append(list(labels[x][mask[x]].numpy()))
+        label_predicted_batch[1].append(list(predicted[x][mask[x]].numpy()))
         label_predicted_batch[2].append(protein[x])
         label_predicted_batch[3].append(seq[x])
     return label_predicted_batch
