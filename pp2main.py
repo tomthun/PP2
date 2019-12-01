@@ -16,7 +16,7 @@ from CustomDataset import CustomDataset
 from CNN import SimpleCNN
 import sklearn.metrics as metrics
 import torch
-params = {'batch_size': 25,
+params = {'batch_size': 5,
           'shuffle': True,
           'num_workers': 0}
 splits = 4 # specify the number of wanted data splits, counting starts at 0,      
@@ -30,7 +30,7 @@ num_epochs = 61
 learning_rate = 1e-3
 num_classes = 3 # number of classes (currently 3: NES,NLS and no signal)
 inp, outp = int(form), num_classes # size of input and output layers
-dev = torch.device('cpu') # change to 'cpu' to use cpu
+dev = torch.device('cuda') # change to 'cpu' to use cpu
 class_weights = torch.FloatTensor([1/403348, 1/7093, 1/939]).to(dev)
 # =============================================================================
 # Main functions
@@ -147,7 +147,6 @@ def train(model, train_loader, validation_loader, num_epochs, learning_rate, dev
             # Run the forward pass      
             train, labels, mask  = train.to(dev), labels.to(dev), mask.to(dev)  
             outputs = model(train)
-            outputs = outputs.squeeze_()                   
             if no_crf:
                 loss = criterion(outputs, labels)
             else: 
@@ -191,7 +190,6 @@ def validate(val_loader, model, dev, class_weights):
             # preprocess outputs to correct format (1024*70*1)
             validation, labels, mask = validation.to(dev), labels.to(dev), mask.to(dev)
             outputs = model(validation)
-            outputs.squeeze_()
             if no_crf:
                 # use CrossEntropyloss minimalization
                 loss = criterion(outputs, labels)
@@ -219,6 +217,7 @@ def orgaBatch (labels, predicted, label_predicted_batch, mask, protein, seq):
     labels, predicted, mask = labels.to('cpu'), predicted.to('cpu'), mask.to('cpu')
     for x in range(len(labels)):
         label_predicted_batch[0].append(list(labels[x][mask[x]].numpy()))
+        if len(predicted.size()) == 1: predicted = predicted.unsqueeze(0)
         label_predicted_batch[1].append(list(predicted[x][mask[x]].numpy()))
         label_predicted_batch[2].append(protein[x])
         label_predicted_batch[3].append(seq[x])
