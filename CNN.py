@@ -13,18 +13,18 @@ class SimpleCNN(nn.Module):
     def __init__(self,num_tags,inp,outp,dev):
         super(SimpleCNN, self).__init__()
         self.compLayer = nn.Sequential(
-            nn.Conv2d(inp, 128, kernel_size=(1,1),  padding = (0,0)), nn.LeakyReLU(), nn.BatchNorm2d(128)) 
-        self.attentionlayer = nn.TransformerEncoder(nn.TransformerEncoderLayer(d_model=128, nhead=1), num_layers=1)
+            nn.Conv2d(inp, 48, kernel_size=(1,1),  padding = (0,0)), nn.LeakyReLU(), nn.BatchNorm2d(48)) 
+        self.attentionlayer = nn.TransformerEncoder(nn.TransformerEncoderLayer(d_model=48, nhead=1), num_layers=1)
         self.layer1 = nn.Sequential(
-            nn.Conv2d(1024, 32, kernel_size=(7,1),  padding = (3,0)), nn.LeakyReLU(), nn.BatchNorm2d(32)) 
+            nn.Conv2d(48, 64, kernel_size=(7,1),  padding = (3,0)), nn.LeakyReLU(), nn.BatchNorm2d(64)) 
         self.layer2 = nn.Sequential(
-            nn.Conv2d(32, outp, kernel_size=(3,1),  padding=(1,0)), nn.Sigmoid(), nn.BatchNorm2d(outp)) 
+            nn.Conv2d(64, outp, kernel_size=(3,1),  padding=(1,0)), nn.Sigmoid(), nn.BatchNorm2d(outp)) 
         self.crf = CRF(num_tags,batch_first=True).to(dev)
     
     def forward(self, x):
-#        out = self.compLayer(x.unsqueeze(3))
-#        out = self.attentionlayer(out.squeeze(dim = 3).permute(2,0,1))
-        out = self.layer1(x.unsqueeze(3))#.permute(1,2,0)
+        out = self.compLayer(x.unsqueeze(3))
+        out = self.attentionlayer(out.squeeze(dim = 3).permute(2,0,1))
+        out = self.layer1(out.permute(1,2,0).unsqueeze(3))
         out = self.layer2(out)
         out = out.squeeze(dim = 3)
         return out

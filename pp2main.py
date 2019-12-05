@@ -16,6 +16,7 @@ from CustomDataset import CustomDataset
 from CNN import SimpleCNN
 import sklearn.metrics as metrics
 import torch
+from Plots import create_plts
 params = {'batch_size': 5,
           'shuffle': True,
           'num_workers': 0}
@@ -25,23 +26,34 @@ validation_split = 1 # select validation split (must be in the range of defined 
 benchmark_split = 0 # select benchmark split (must be in the range of defined splits)
 form = '1024' # either '64'or '1024': select 64 or 1024 embbedings 
 printafterepoch = 5
-no_crf = True  
-num_epochs = 61
+no_crf = True # crf or no crf
+onehot = True # with or without onehotencoding
+num_epochs = 41
 learning_rate = 1e-3
 num_classes = 3 # number of classes (currently 3: NES,NLS and no signal)
-inp, outp = int(form), num_classes # size of input and output layers
+inp, outp = int(form) + 22, num_classes # size of input and output layers (+22 if onehotencoding!!)
 dev = torch.device('cuda') # change to 'cpu' to use cpu
 class_weights = torch.FloatTensor([1/403348, 1/7093, 1/939]).to(dev)
 # =============================================================================
 # Main functions
 # =============================================================================
-
-def main(validation_split, benchmark_split, form):
+def cross_valid():
     dic = opendata(form)
+    labels, predicted = [],[]
+    for split in range(splits+1):
+        label_predicted_batch = main(split,benchmark_split,form,dic)
+        labels.append(label_predicted_batch[0])
+        predicted.append(label_predicted_batch[1])
+    create_plts(1, root, learning_rate, num_epochs, benchmark_crossvalid = True, 
+                labels = sum(labels,[]), predictions = sum(predicted,[]), typ = form)
+    return labels,predicted
+
+def main(validation_split, benchmark_split, form, dic):
     train_loader,val_loader = splitdata(dic, validation_split)
     model = SimpleCNN(num_classes, inp, outp, dev).to(dev)
-    model, out_params, label_predicted_batch = train(model,train_loader,val_loader, num_epochs, learning_rate, dev, class_weights)
-    return out_params, label_predicted_batch
+    train(model, train_loader, val_loader, num_epochs, learning_rate, dev, class_weights)
+    _, _, _, _, label_predicted_batch = validate(val_loader, model, dev, class_weights)
+    return label_predicted_batch
 
 def pltseab(dic):
     plt.rcParams.update({'font.size': 16})
@@ -69,23 +81,43 @@ def createdata(form,elmo):
     dic = {}
     tuples = [[],[],[],[]]
     i = 0
+    onehotdic = onehotEncoder()
     for x in range(int((len(train_fasta)-1)/2)):
-        tuples[0].append(train_fasta[i][1:]) 
-        tuples[1].append(train_fasta[i+1])
-        tuples[2].append([0]*len(train_fasta[i+1]))
-        for y in range(len(train_data)-1):
-            if train_fasta[i][1:] == train_data[y][0]:
-                start = int(train_data[y][1])-1 #because we start counting at 1 not 0
+        header = train_fasta[i][1:]
+        tuples[0].append(header) 
+        seq = train_fasta[i+1]
+        tuples[1].append(seq)
+        tuples[2].append([0]*len(seq)) 
+        for y in range(len(train_data)-1): #-1 because last row is empty 
+            if header == train_data[y][0]:
+                start = int(train_data[y][1])-1 #-1 because we start counting at 1 not 0
                 end = int(train_data[y][2])
                 if train_data[y][3] == 'NLS': tuples[2][x][start:end] = [1] * (end-start)
                 if train_data[y][3] == 'NES': tuples[2][x][start:end] = [2] * (end-start)
-        tuples[3].append(elmo[train_fasta[i][1:]])
+        # onehot encoding of the aminoacids
+        embeddings = elmo[header]
+        if len(embeddings) != len(seq): 
+                print('Error: Embeddings vector of ' +header+ ' is not the same size as its sequence!' )
+        if onehot:
+            embeddings = np.append(embeddings, np.array([onehotdic[aa] for aa in seq]), axis= 1)
+        tuples[3].append(embeddings)    
         i += 2   
     dic['Header'] = tuples[0]
     dic['Sequence'] = tuples[1]
     dic['Labels'] = tuples[2]
     dic['Data'] = tuples[3]
-    pickle.dump(dic, open( root+'pickled_files\\dict'+form+'.pickle', 'wb' ))
+    if onehot: pickle.dump(dic, open( root+'pickled_files\\dict_onehot'+form+'.pickle', 'wb' ))
+    else: pickle.dump(dic, open( root+'pickled_files\\dict'+form+'.pickle', 'wb' ))
+    return dic
+
+def onehotEncoder(arr = ['A','R','N','D','B','C','E','Q','Z','G','H','I','L',
+                         'K','M','S','F','P','T','W','Y','V','X']):
+    dic = {}
+    for x in range(len(arr)):
+        liste = [0] * (len(arr)-1)
+        if arr[x]!='X':
+            liste[x] = 1
+        dic[arr[x]] = liste
     return dic
 
 def opendata(form):
@@ -95,9 +127,10 @@ def opendata(form):
         elmo = np.load(root+'\\npz\\nes_nls.npz',  mmap_mode='r' )
     try:       
         print('Loading pickled files...')    
-        dic = pickle.load(open(root+'pickled_files\\dict'+form+'.pickle', 'rb'))   
+        if onehot: dic = pickle.load(open(root+'pickled_files\\dict_onehot'+form+'.pickle', 'rb'))               
+        else: dic = pickle.load(open(root+'pickled_files\\dict'+form+'.pickle', 'rb'))   
     except (OSError, IOError):   
-        print('No data found. Creating new dataframe.')
+        print('No data found. Creating new dataframe.')        
         dic = createdata(form,elmo)
         print('Saved and Done!')
     return dic
@@ -125,7 +158,7 @@ def splitdata (dic, split):
 def my_collate(batch):
     seq = [item[3] for item in batch]
     longestprot = len(max(seq ,key = len))
-    data = [torch.cat((item[0],torch.tensor(np.zeros([int(form),longestprot-len(item[3])])).float()), 1) for item in batch]
+    data = [torch.cat((item[0],torch.tensor(np.zeros([inp,longestprot-len(item[3])])).float()), 1) for item in batch]
     target = [torch.cat((item[1],torch.tensor(-np.ones(longestprot-len(item[3]))).long())) for item in batch]
     protein = [item[2] for item in batch]        
     mask = [torch.BoolTensor(np.concatenate([np.ones(len(item[3])), np.zeros(longestprot-len(item[3]))])) for item in batch]
@@ -237,4 +270,6 @@ def calcMCCbatch (labels_batch, predicted_batch):
 # =============================================================================
     
 if __name__ == "__main__":
-    out_params, label_predicted_batch = main(validation_split, benchmark_split, form)
+    #out_params, label_predicted_batch = main(validation_split, benchmark_split, form)
+    labels,predicted = cross_valid()
+   

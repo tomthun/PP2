@@ -13,44 +13,25 @@ from collections import Counter
 import random
 import sklearn.metrics as metrics
 from operator import add 
+from statistics import mean
+from pltCM import pltConfusionMatrix
 # =============================================================================
 # Functions to create plots
 # =============================================================================
-def create_plts(out_params, cross_validation, benchmark, split, root, learning_rate, num_epochs,
-                mcc_orga = 0, cm_orga = 0, benchmark_crossvalid = False, labels = [], predictions = [],
-                labels_pre= [], predictions_pre= []):
+def create_plts( split, root, learning_rate, num_epochs,out_params=[], mcc_orga = 0, cm_orga = 0,
+                 benchmark_crossvalid = False, labels = [], predictions = [], typ = ''):
     split = str(split)
-    plt.rcParams["figure.figsize"] = [9,6]
-    plt.rcParams.update({'font.size': 16})
-    c = ['Others(non-Sp)', 'S', 'T', 'L'] #['I','M','O', 'S', 'T', 'L']
-    if cross_validation:
-        calcSTDandMEANplot(out_params, 0,1, 'loss', root, learning_rate, num_epochs)
-        calcSTDandMEANplot(out_params, 3,4, 'accuracy', root, learning_rate, num_epochs)
-        calcSTDandMEANplot(out_params, 5,6, 'MCC', root, learning_rate, num_epochs)
-    elif benchmark:
-        plot_confusion_matrix (out_params, c, root, learning_rate, num_epochs, split, title = 'Confusion matrix of benchmark split '+split+', without normalization')
-        plot_confusion_matrix (cm_orga[0], c, root, learning_rate, num_epochs, split, title = 'Benchmark split '+split+', Organism = Archea')
-        plot_confusion_matrix (cm_orga[1], c, root, learning_rate, num_epochs, split, title = 'Benchmark split '+split+', Organism = Eukaryot')
-        plot_confusion_matrix (cm_orga[2], c, root, learning_rate, num_epochs, split, title = 'Benchmark split '+split+', Organism = Gram negative')
-        plot_confusion_matrix (cm_orga[3], c, root, learning_rate, num_epochs, split, title = 'Benchmark split '+split+', Organism = Gram positive')
-        plot_confusion_matrix (cm_orga[0], c, root, learning_rate, num_epochs, split, normalize=True, title = 'Benchmark split '+split+' normalized, Organism = Archea')
-        plot_confusion_matrix (cm_orga[1], c, root, learning_rate, num_epochs, split, normalize=True, title = 'Benchmark split '+split+' normalized, Organism = Eukaryot')
-        plot_confusion_matrix (cm_orga[2], c, root, learning_rate, num_epochs, split, normalize=True, title = 'Benchmark split '+split+' normalized, Organism = Gram negative')
-        plot_confusion_matrix (cm_orga[3], c, root, learning_rate, num_epochs, split, normalize=True, title = 'Benchmark split '+split+' normalized, Organism = Gram positive')
-        comparisonBar(mcc_orga, root, split, learning_rate, num_epochs)
-    elif benchmark_crossvalid:
-        mccs, mccs_res, accs,acc_res, cms, cms_res = randSampler(labels,predictions)
-        mcc_orga = outListorga(out_params)
-        comparisonBar(mcc_orga, root, split, learning_rate, num_epochs)
+    c = ['Others(non-signal)', 'NES', 'NLS'] 
+    if benchmark_crossvalid:
+        mccs, mccs_res, accs,acc_res, cms, cms_res,cs = randSampler(labels,predictions)
         cm_mean, cm_standard  = meanstdCM(cms)
         cm_mean_res, cm_standard_res  = meanstdCM(cms_res)
         boxplt (mccs, mccs_res , 'MCC', root, learning_rate,num_epochs)
         boxplt (accs, acc_res, 'accuracy', root, learning_rate,num_epochs)
-        plot_bar_csrel(out_params,root,split,learning_rate,num_epochs)
-        plot_confusion_matrix (cm_mean, c, root, learning_rate, num_epochs, split, normalize=True, title='Normalized confusion matrix of the benchmark global signal peptide predictions', 
-                          cm_standard = cm_standard, cm_benchmark = True)
-        plot_confusion_matrix (cm_mean_res, c, root, learning_rate, num_epochs, split, normalize=True, title='Normalized confusion matrix of the benchmark signal peptide residue predictions', 
-                          cm_standard = cm_standard_res, cm_benchmark = True)
+        #plot_bar_csrel(out_params,root,split,learning_rate,num_epochs)
+        pltConfusionMatrix(cm_mean_res, c)
+        plt.savefig(root + 'Pictures\\'+ 'CM'+ typ +'_lr_' + str(learning_rate) + '_epochs_' + str(num_epochs) + '_plot.png')
+        print('Mean deviation of the real cleavage site: ', mean(cs))
     else:        
         #------------------------------Loss------------------------------
         loss_val, loss_train, epochs, acc_val, acc_train, mcc_val, mcc_train = (np.array([x[0] for x in out_params]),
@@ -94,24 +75,6 @@ def create_plts(out_params, cross_validation, benchmark, split, root, learning_r
         plot_confusion_matrix (cm_train, c, root, learning_rate, num_epochs, split, normalize=True, title = 'Confusion matrix trainset, with normalization')
         plot_confusion_matrix (cm_valid, c, root, learning_rate, num_epochs, split, normalize=True, title = 'Confusion matrix validationset split '+split+', with normalization')
     
-def comparisonBar(mcc_orga, root, split, learning_rate, num_epochs):
-    #papervalues for mcc 
-    plt.rcParams["figure.figsize"] = [14,6]
-    plt.rcParams.update({'font.size': 15})
-    archea = [mcc_orga[0], 0.938 , 0.83  ,0.78]
-    eukaryot = [mcc_orga[1], 0.907, 0.39, 0.42]
-    gram_neg = [mcc_orga[2], 0.89, 0.8, 0.81]
-    gram_pos = [mcc_orga[3], 0.966, 0.97, 0.85]
-    algorithms = ['SeqVec', 'Signal P5', 'LipoP', 'Philius']
-    df = pd.DataFrame({'Archaea': archea, 'Eukaryot': eukaryot, 'Gram-negative bacteria':gram_neg,
-                       'Gram-positive bacteria':gram_pos}, index=algorithms)
-    ax = df.plot.barh()
-    ax.set_title('Comparison of MCC scores of algorithms across organisms')
-    plt.xlabel('MCC Score')
-    plt.ylabel('Different algorithms')
-    plt.savefig(root + 'Pictures\\Benchmark_'+ str(split) +'_lr_' + str(learning_rate) + '_epochs_' + str(num_epochs) + '_comparison_plot.png')
-    plt.close()
-    plt.rcParams["figure.figsize"] = [9,6]
 
 def boxplt (glo, res, title, root, learning_rate,num_epochs):
     plt.rcParams["figure.figsize"] = [6,6]
@@ -195,7 +158,8 @@ def plot_bar_csrel(out_params,root,split,learning_rate,num_epochs):
     
 def plot_confusion_matrix (cm, classes, root, learning_rate, num_epochs, split, normalize=False, title=None, 
                           cmap=plt.cm.Blues, cm_standard = 0, cm_benchmark = False):
-    plt.rcParams.update({'font.size': 11})
+    plt.rcParams.update({'font.size': 8})
+
     """
     This function prints and plots the confusion matrix.
     Normalization can be applied by setting `normalize=True`.
@@ -216,8 +180,8 @@ def plot_confusion_matrix (cm, classes, root, learning_rate, num_epochs, split, 
     im = ax.imshow(cm, interpolation='nearest', cmap=cmap)
     ax.figure.colorbar(im, ax=ax)
     # We want to show all ticks...
-    ax.set(xticks=np.arange(cm.shape[1]),
-           yticks=np.arange(cm.shape[0]),
+    ax.set(xticks=np.arange(cm.shape[0]),
+           yticks=np.arange(cm.shape[1]),
            # ... and label them with the respective list entries
            xticklabels=classes, yticklabels=classes,
            title=title,
@@ -225,11 +189,14 @@ def plot_confusion_matrix (cm, classes, root, learning_rate, num_epochs, split, 
            xlabel='Predicted label')
 
     # Rotate the tick labels and set their alignment.
+    plt.setp(ax.get_yticklabels(), rotation=45, ha="right",
+             rotation_mode="anchor")
+
     plt.setp(ax.get_xticklabels(), rotation=45, ha="right",
              rotation_mode="anchor")
 
     # Loop over data dimensions and create text annotations.
-    fmt = '.2f' if normalize else 'd'
+    fmt = '.2f' if normalize else 'f'
     thresh = cm.max() / 2.
     if cm_benchmark:
         for i in range(cm.shape[0]):
@@ -243,10 +210,9 @@ def plot_confusion_matrix (cm, classes, root, learning_rate, num_epochs, split, 
                 ax.text(j, i, format(cm[i, j], fmt),
                         ha="center", va="center",
                         color="white" if cm[i, j] > thresh else "black")
-    plt.show()
     plt.tight_layout()
+    plt.show()
     plt.savefig(root + 'Pictures\\' + title + '_lr_' + str(learning_rate) + '_epochs_' + str(num_epochs) + '_split_'+str(split)+'.png')
-    plt.close()
     return ax
 
 def meanstdCM(cms):
@@ -261,42 +227,40 @@ def meanstdCM(cms):
     cm_standard = (cm_standard**0.5)/len(cms)**0.5
     return cm_mean, cm_standard
 
-def randSampler (labels, predictions):
+def randSampler (l, p):
     mccs = []
     mccs_res = []
     accs = []
     acc_res = []
     cms = []    
     cms_res = []
-    #cs = [] 
-    l = [list(label) for label in labels]
-    p = [list(label.astype(int)) for label in predictions]
+    cs = [] 
     for x in range(1000):
         r_label = []
         r_pred = []
-        for y in range(len(labels)):
-            r_indice = random.sample(range(len(labels)), 1)
+        for y in range(len(l)):
+            r_indice = random.sample(range(len(l)), 1)
             r_label.append(l[r_indice [0]])
             r_pred.append(p[r_indice [0]])
-       # csdev = csdiff(r_label,r_pred) 
+        csdev = csdiff(r_label,r_pred) 
         l2 = [label[0] for label in r_label]
         p2 = [label[0] for label in r_pred]
-        r_pred = list(np.array(r_pred).flat)
-        r_label = list(np.array(r_label).flat)
+        r_pred = sum(r_pred, [])
+        r_label = sum(r_label, [])
         mcc_gl = metrics.matthews_corrcoef(l2, p2)
         acc_gl = metrics.accuracy_score(l2, p2)   
-        cm_gl = metrics.confusion_matrix(l2, p2,  [0, 1, 2, 3]) #[0, 1, 2, 3, 4, 5]) 
+        cm_gl = metrics.confusion_matrix(l2, p2,  [0, 1, 2]) 
         mcc = metrics.matthews_corrcoef(r_label, r_pred)
         acc = metrics.accuracy_score(r_label,r_pred)  
-        cm = metrics.confusion_matrix(r_label, r_pred,  [0, 1, 2, 3]) #[0, 1, 2, 3, 4, 5]) 
+        cm = metrics.confusion_matrix(r_label, r_pred,  [0, 1, 2])
         mccs_res.append(mcc) 
         acc_res.append(acc)
         cms_res.append(cm)
         mccs.append(mcc_gl)
         accs.append(acc_gl)
         cms.append(cm_gl)
-        #cs.append(csdev)
-    return mccs, mccs_res, accs, acc_res, cms, cms_res #, cs
+        cs.append(csdev)
+    return mccs, mccs_res, accs, acc_res, cms, cms_res , cs
 
 def csdiff(labels, predictions):
     csdiff = 0
@@ -305,12 +269,3 @@ def csdiff(labels, predictions):
     csdiff = csdiff/len(labels)
     return csdiff   
  
-def outListorga (out_params):
-    orgas = [out[10] for out in out_params]
-    res = [0,0,0,0]
-    for x in range(len(orgas)):
-        res = list(map(add, res, orgas[x])) 
-    res = [x/(len(orgas)) for x in res]
-    return res
-    
-    
