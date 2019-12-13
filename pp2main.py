@@ -20,18 +20,16 @@ from Plots import create_plts
 params = {'batch_size': 5,
           'shuffle': True,
           'num_workers': 0}
-splits = 4 # specify the number of wanted data splits, counting starts at 0,      
+splits = 5 # specify the number of wanted data splits, counting starts at 0,      
            # e.g 4 splits = [0,1,2,3,4] splits (5)
-validation_split = 1 # select validation split (must be in the range of defined splits)
-benchmark_split = 0 # select benchmark split (must be in the range of defined splits)
 form = '1024' # either '64'or '1024': select 64 or 1024 embbedings 
 printafterepoch = 5
 no_crf = True # crf or no crf
-onehot = True # with or without onehotencoding
-num_epochs = 41
+onehot = False # with or without onehotencoding
+num_epochs = 51
 learning_rate = 1e-3
 num_classes = 3 # number of classes (currently 3: NES,NLS and no signal)
-inp, outp = int(form) + 22, num_classes # size of input and output layers (+22 if onehotencoding!!)
+inp, outp = int(form), num_classes # size of input and output layers (+22 if onehotencoding!!)
 dev = torch.device('cuda') # change to 'cpu' to use cpu
 class_weights = torch.FloatTensor([1/403348, 1/7093, 1/939]).to(dev)
 # =============================================================================
@@ -40,19 +38,22 @@ class_weights = torch.FloatTensor([1/403348, 1/7093, 1/939]).to(dev)
 def cross_valid():
     dic = opendata(form)
     labels, predicted = [],[]
-    for split in range(splits+1):
-        label_predicted_batch = main(split,benchmark_split,form,dic)
+    for split in range(splits):
+        if split == splits:
+            label_predicted_batch = main(split,0,form,dic)
+        else:
+            label_predicted_batch = main(split,form,dic)
         labels.append(label_predicted_batch[0])
         predicted.append(label_predicted_batch[1])
     create_plts(1, root, learning_rate, num_epochs, benchmark_crossvalid = True, 
-                labels = sum(labels,[]), predictions = sum(predicted,[]), typ = form)
+                labels = sum(labels,[]), predictions = sum(predicted,[]), typ = str(inp))
     return labels,predicted
 
-def main(validation_split, benchmark_split, form, dic):
-    train_loader,val_loader = splitdata(dic, validation_split)
+def main(split, form, dic):
+    train_loader, val_loader, bench_loader = splitdata(dic, split)
     model = SimpleCNN(num_classes, inp, outp, dev).to(dev)
     train(model, train_loader, val_loader, num_epochs, learning_rate, dev, class_weights)
-    _, _, _, _, label_predicted_batch = validate(val_loader, model, dev, class_weights)
+    _, _, _, _, label_predicted_batch = validate(bench_loader, model, dev, class_weights)
     return label_predicted_batch
 
 def pltseab(dic):
@@ -134,26 +135,39 @@ def opendata(form):
         dic = createdata(form,elmo)
         print('Saved and Done!')
     return dic
-
+#to do fix
 def splitdata (dic, split):
     end = len(dic['Header'])
-    ovload = (end%splits)
-    border = int((end-ovload)/splits)
-    if splits != split:
+    ovload = (end%(splits))
+    border = int((end-ovload)/(splits))
+    if splits > (split+2):
+        validation = {k:dic[k][border*(split):border*(split+1)]
+        for k in ('Header', 'Sequence', 'Labels', 'Data')}
+        benchmark = {k:dic[k][border*(split+1):border*(split+2)]
+        for k in ('Header', 'Sequence', 'Labels', 'Data')}
+        train = {k:dic[k][:border*split] + dic[k][border*(split+2):end]
+        for k in ('Header', 'Sequence', 'Labels', 'Data')}
+    elif splits == (split+2):
         validation = {k:dic[k][border*split:border*(split+1)]
         for k in ('Header', 'Sequence', 'Labels', 'Data')}
-        train = {k:dic[k][border*abs(split-1):border*split] + dic[k][border*(split+1):end]
+        benchmark = {k:dic[k][border*(split+1):end]
         for k in ('Header', 'Sequence', 'Labels', 'Data')}
-    else:
-        validation = {k:dic[k][border*split-1:end]
+        train = {k:dic[k][0:border*split]
+        for k in ('Header', 'Sequence', 'Labels', 'Data')}    
+    else:        
+        validation = {k:dic[k][border*split:end]
         for k in ('Header', 'Sequence', 'Labels', 'Data')}
-        train = {k:dic[k][:border*split-1]
+        benchmark = {k:dic[k][0:border]
+        for k in ('Header', 'Sequence', 'Labels', 'Data')}
+        train = {k:dic[k][border:border*(split)]
         for k in ('Header', 'Sequence', 'Labels', 'Data')}
     train_dataset = CustomDataset(train)
     train_loader = DataLoader(train_dataset, **params, collate_fn=my_collate)    
     val_dataset = CustomDataset(validation)
-    val_loader = DataLoader(val_dataset, **params, collate_fn=my_collate)    
-    return train_loader, val_loader
+    val_loader = DataLoader(val_dataset, **params, collate_fn=my_collate) 
+    bench_dataset = CustomDataset(benchmark)
+    bench_loader = DataLoader(bench_dataset, **params, collate_fn=my_collate) 
+    return train_loader, val_loader, bench_loader
  
 def my_collate(batch):
     seq = [item[3] for item in batch]

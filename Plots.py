@@ -23,15 +23,14 @@ def create_plts( split, root, learning_rate, num_epochs,out_params=[], mcc_orga 
     split = str(split)
     c = ['Others(non-signal)', 'NES', 'NLS'] 
     if benchmark_crossvalid:
-        mccs, mccs_res, accs,acc_res, cms, cms_res,cs = randSampler(labels,predictions)
+        mccs, accs, cms = randSampler(labels,predictions)
         cm_mean, cm_standard  = meanstdCM(cms)
-        cm_mean_res, cm_standard_res  = meanstdCM(cms_res)
-        boxplt (mccs, mccs_res , 'MCC', root, learning_rate,num_epochs)
-        boxplt (accs, acc_res, 'accuracy', root, learning_rate,num_epochs)
+#        cm_mean_res, cm_standard_res  = meanstdCM(cms_res)
+#        boxplt (mccs, mccs_res , 'MCC', root, learning_rate,num_epochs,typ)
+#        boxplt (accs, acc_res, 'accuracy', root, learning_rate,num_epochs,typ)
         #plot_bar_csrel(out_params,root,split,learning_rate,num_epochs)
-        pltConfusionMatrix(cm_mean_res, c)
+        pltConfusionMatrix(cm_mean, c)
         plt.savefig(root + 'Pictures\\'+ 'CM'+ typ +'_lr_' + str(learning_rate) + '_epochs_' + str(num_epochs) + '_plot.png')
-        print('Mean deviation of the real cleavage site: ', mean(cs))
     else:        
         #------------------------------Loss------------------------------
         loss_val, loss_train, epochs, acc_val, acc_train, mcc_val, mcc_train = (np.array([x[0] for x in out_params]),
@@ -76,7 +75,7 @@ def create_plts( split, root, learning_rate, num_epochs,out_params=[], mcc_orga 
         plot_confusion_matrix (cm_valid, c, root, learning_rate, num_epochs, split, normalize=True, title = 'Confusion matrix validationset split '+split+', with normalization')
     
 
-def boxplt (glo, res, title, root, learning_rate,num_epochs):
+def boxplt (glo, res, title, root, learning_rate,num_epochs,typ):
     plt.rcParams["figure.figsize"] = [6,6]
     plt.subplot(1, 2, 1)
     post, post_std = np.mean(glo), np.std(glo)
@@ -93,7 +92,7 @@ def boxplt (glo, res, title, root, learning_rate,num_epochs):
     plt.xticks([1], ['Mean: '+ format(post, fmt)  +' +/- ' + format(post_std, fmt)])   
     
     plt.tight_layout()
-    plt.savefig(root + 'Pictures\\'+ title +'_lr_' + str(learning_rate) + '_epochs_' + str(num_epochs) + '_boxplot.png')
+    plt.savefig(root + 'Pictures\\'+ title+typ +'_lr_' + str(learning_rate) + '_epochs_' + str(num_epochs) + '_boxplot.png')
     plt.close()
     plt.rcParams["figure.figsize"] = [9,6]
     
@@ -229,38 +228,27 @@ def meanstdCM(cms):
 
 def randSampler (l, p):
     mccs = []
-    mccs_res = []
     accs = []
-    acc_res = []
     cms = []    
-    cms_res = []
-    cs = [] 
-    for x in range(1000):
-        r_label = []
-        r_pred = []
+    per_resi_res = perRes(l,p)        
+    for x in range(10000):
+        val = []
         for y in range(len(l)):
             r_indice = random.sample(range(len(l)), 1)
-            r_label.append(l[r_indice [0]])
-            r_pred.append(p[r_indice [0]])
-        csdev = csdiff(r_label,r_pred) 
-        l2 = [label[0] for label in r_label]
-        p2 = [label[0] for label in r_pred]
-        r_pred = sum(r_pred, [])
-        r_label = sum(r_label, [])
-        mcc_gl = metrics.matthews_corrcoef(l2, p2)
-        acc_gl = metrics.accuracy_score(l2, p2)   
-        cm_gl = metrics.confusion_matrix(l2, p2,  [0, 1, 2]) 
-        mcc = metrics.matthews_corrcoef(r_label, r_pred)
-        acc = metrics.accuracy_score(r_label,r_pred)  
-        cm = metrics.confusion_matrix(r_label, r_pred,  [0, 1, 2])
-        mccs_res.append(mcc) 
-        acc_res.append(acc)
-        cms_res.append(cm)
-        mccs.append(mcc_gl)
-        accs.append(acc_gl)
-        cms.append(cm_gl)
-        cs.append(csdev)
-    return mccs, mccs_res, accs, acc_res, cms, cms_res , cs
+            val.append(per_resi_res[r_indice [0]])
+        mccs.append(sum([x[0] for x in val])/len(val))
+        accs.append(sum([x[1] for x in val])/len(val))
+        cms.append(sum([x[2] for x in val]))
+    return mccs, accs, cms
+
+def perRes (labels, predictions):
+    res = []
+    for x in range(len(labels)):
+        mcc = metrics.matthews_corrcoef(labels[x], predictions[x])
+        acc = metrics.accuracy_score(labels[x],predictions[x])  
+        cm = metrics.confusion_matrix(labels[x], predictions[x],  [0, 1, 2])
+        res.append([mcc,acc,cm])
+    return res
 
 def csdiff(labels, predictions):
     csdiff = 0
