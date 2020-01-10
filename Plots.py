@@ -77,14 +77,13 @@ def create_plts( split, root, learning_rate, num_epochs,out_params=[], mcc_orga 
 
 def boxplt (glo, res, title, root, learning_rate,num_epochs,typ):
     plt.rcParams["figure.figsize"] = [6,6]
-    plt.subplot(1, 2, 1)
-    post, post_std = np.mean(glo), np.std(glo)
-    plt.boxplot(glo)
-    plt.title("Boxplot of the\nglobal "+title)
-    fmt = '.3f'
-    plt.xticks([1], ['Mean: '+ format(post, fmt)  +' +/- ' + format(post_std, fmt)])   
+#    plt.subplot(1, 2, 1)
+#    post, post_std = np.mean(glo), np.std(glo)
+#    plt.boxplot(glo)
+#    plt.title("Boxplot of the\nglobal "+title)
+#    fmt = '.3f'
+#    plt.xticks([1], ['Mean: '+ format(post, fmt)  +' +/- ' + format(post_std, fmt)])   
     
-    plt.subplot(1, 2, 2)
     post, post_std = np.mean(res), np.std(res)
     plt.boxplot(res)
     plt.title("Boxplot of the\nresidue "+title)

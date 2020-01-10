@@ -17,19 +17,21 @@ from CNN import SimpleCNN
 import sklearn.metrics as metrics
 import torch
 from Plots import create_plts
-params = {'batch_size': 5,
+params = {'batch_size': 50,
           'shuffle': True,
           'num_workers': 0}
+torch.manual_seed(1)
 splits = 5 # specify the number of wanted data splits, counting starts at 0,      
            # e.g 4 splits = [0,1,2,3,4] splits (5)
 form = '1024' # either '64'or '1024': select 64 or 1024 embbedings 
 printafterepoch = 5
 no_crf = True # crf or no crf
-onehot = False # with or without onehotencoding
-num_epochs = 51
-learning_rate = 1e-3
+onehot = True # with or without onehotencoding
+num_epochs = 61
+learning_rate = 1e-2
 num_classes = 3 # number of classes (currently 3: NES,NLS and no signal)
 inp, outp = int(form), num_classes # size of input and output layers (+22 if onehotencoding!!)
+if onehot: inp += 22
 dev = torch.device('cuda') # change to 'cpu' to use cpu
 class_weights = torch.FloatTensor([1/403348, 1/7093, 1/939]).to(dev)
 # =============================================================================
@@ -135,7 +137,7 @@ def opendata(form):
         dic = createdata(form,elmo)
         print('Saved and Done!')
     return dic
-#to do fix
+
 def splitdata (dic, split):
     end = len(dic['Header'])
     ovload = (end%(splits))
@@ -186,7 +188,7 @@ def train(model, train_loader, validation_loader, num_epochs, learning_rate, dev
     total_step = len(train_loader)
     out_params = []
     criterion = torch.nn.CrossEntropyLoss(weight = class_weights, ignore_index = -1, reduction = 'mean')
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    optimizer = torch.optim.ASGD(model.parameters(), lr=learning_rate)
     for epoch in range(num_epochs):
         loss_train_list = []  
         label_predicted_batch = [[],[],[],[]]      
@@ -225,6 +227,7 @@ def train(model, train_loader, validation_loader, num_epochs, learning_rate, dev
             acc_valid, mcc_valid, loss_valid, cm_valid, label_predicted_batch_val = validate(validation_loader, model, dev, class_weights)
             out_params.append([mcc_train, mcc_valid, acc, acc_valid,loss_ave, loss_valid,
                                cm_train, cm_valid])
+        model.train()
     return model, out_params, label_predicted_batch
 
 def validate(val_loader, model, dev, class_weights):
