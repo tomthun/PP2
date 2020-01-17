@@ -21,13 +21,18 @@ from pltCM import pltConfusionMatrix
 def create_plts( split, root, learning_rate, num_epochs,out_params=[], mcc_orga = 0, cm_orga = 0,
                  benchmark_crossvalid = False, labels = [], predictions = [], typ = ''):
     split = str(split)
-    c = ['Others(non-signal)', 'NES', 'NLS'] 
+    c = ['Others(non-signal)', 'NLS', 'NES'] 
     if benchmark_crossvalid:
+        prec_rec_f1(labels,predictions,root,learning_rate,num_epochs)
+        labels = sum(labels,[])
+        predictions = sum(predictions,[])
+        calcoverlap(labels,predictions, 1,c,root, learning_rate, num_epochs)
+        calcoverlap(labels,predictions, 2,c,root, learning_rate, num_epochs)
         mccs, accs, cms = randSampler(labels,predictions)
         cm_mean, cm_standard  = meanstdCM(cms)
 #        cm_mean_res, cm_standard_res  = meanstdCM(cms_res)
-#        boxplt (mccs, mccs_res , 'MCC', root, learning_rate,num_epochs,typ)
-#        boxplt (accs, acc_res, 'accuracy', root, learning_rate,num_epochs,typ)
+        boxplt (mccs , 'MCC', root, learning_rate,num_epochs,typ)
+        boxplt (accs , 'balanced accuracy', root, learning_rate,num_epochs,typ)
         #plot_bar_csrel(out_params,root,split,learning_rate,num_epochs)
         pltConfusionMatrix(cm_mean, c)
         plt.savefig(root + 'Pictures\\'+ 'CM'+ typ +'_lr_' + str(learning_rate) + '_epochs_' + str(num_epochs) + '_plot.png')
@@ -75,15 +80,8 @@ def create_plts( split, root, learning_rate, num_epochs,out_params=[], mcc_orga 
         plot_confusion_matrix (cm_valid, c, root, learning_rate, num_epochs, split, normalize=True, title = 'Confusion matrix validationset split '+split+', with normalization')
     
 
-def boxplt (glo, res, title, root, learning_rate,num_epochs,typ):
-    plt.rcParams["figure.figsize"] = [6,6]
-#    plt.subplot(1, 2, 1)
-#    post, post_std = np.mean(glo), np.std(glo)
-#    plt.boxplot(glo)
-#    plt.title("Boxplot of the\nglobal "+title)
-#    fmt = '.3f'
-#    plt.xticks([1], ['Mean: '+ format(post, fmt)  +' +/- ' + format(post_std, fmt)])   
-    
+def boxplt (res, title, root, learning_rate,num_epochs,typ):
+    plt.rcParams["figure.figsize"] = [6,6] 
     post, post_std = np.mean(res), np.std(res)
     plt.boxplot(res)
     plt.title("Boxplot of the\nresidue "+title)
@@ -94,6 +92,34 @@ def boxplt (glo, res, title, root, learning_rate,num_epochs,typ):
     plt.savefig(root + 'Pictures\\'+ title+typ +'_lr_' + str(learning_rate) + '_epochs_' + str(num_epochs) + '_boxplot.png')
     plt.close()
     plt.rcParams["figure.figsize"] = [9,6]
+
+def boxplt_pre_rec_f1 (pre,rec,f1, root, learning_rate,num_epochs, classes):
+    plt.rcParams.update({'font.size': 12})
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3)
+    fig.suptitle('Boxplots of class ' + classes+ '\n',  fontsize=16)
+    post, post_std = np.mean(pre), np.std(pre)
+    ax1.boxplot(pre)
+    ax1.set_title("\n\nPrecision" )
+    fmt = '.3f'
+    ax1.set_xticks([1])
+    ax1.set_xticklabels(['Mean: '+ format(post, fmt)  +' +/- ' + format(post_std, fmt)])   
+    
+    post, post_std = np.mean(rec), np.std(rec)
+    ax2.boxplot(rec)
+    ax2.set_title("\n\nRecall")
+    ax2.set_xticks([1])
+    ax2.set_xticklabels(['Mean: '+ format(post, fmt)  +' +/- ' + format(post_std, fmt)])   
+    
+    post, post_std = np.mean(f1), np.std(f1)
+    ax3.boxplot(f1)
+    ax3.set_xticks([1])
+    ax3.set_title("\n\nF1-score")
+    ax3.set_xticklabels(['Mean: '+ format(post, fmt)  +' +/- ' + format(post_std, fmt)])   
+    
+    plt.tight_layout()
+    plt.savefig(root + 'Pictures\\prec_rec_f1_lr_'+ classes + str(learning_rate) + '_epochs_' + str(num_epochs) + '_boxplot.png')
+    plt.close()
+    plt.rcParams["figure.figsize"] = [9,6]    
     
 def calcSTDandMEANplot(out_params, x, y, param, root, learning_rate, num_epochs):
     mean_valid = []
@@ -244,7 +270,7 @@ def perRes (labels, predictions):
     res = []
     for x in range(len(labels)):
         mcc = metrics.matthews_corrcoef(labels[x], predictions[x])
-        acc = metrics.accuracy_score(labels[x],predictions[x])  
+        acc = metrics.balanced_accuracy_score(labels[x],predictions[x])  
         cm = metrics.confusion_matrix(labels[x], predictions[x],  [0, 1, 2])
         res.append([mcc,acc,cm])
     return res
@@ -255,4 +281,66 @@ def csdiff(labels, predictions):
         csdiff += abs(labels[x].count(0) - predictions[x].count(0))
     csdiff = csdiff/len(labels)
     return csdiff   
- 
+
+def prec_rec_f1(labels,predicted,root,lr,ep):
+    res = []
+    for x in range(len(labels)): 
+        res.append(metrics.precision_recall_fscore_support(sum(labels[x],[]),sum(predicted[x],[])))
+    fin = []
+    for y in range (len(res[0])):
+        for x in range (len(res[0][0])):
+            fin.append([k[y][x] for k in res])   
+    boxplt_pre_rec_f1(fin[0],fin[3],fin[6],root,lr,ep,'non-signal')
+    boxplt_pre_rec_f1(fin[1],fin[4],fin[7],root,lr,ep,'NLS')   
+    boxplt_pre_rec_f1(fin[2],fin[5],fin[8],root,lr,ep,'NES')        
+    
+    
+def randompred (labels, pop = [0,1,2], dis = [520295/532106, 10362/532106,1448/532106]):
+    randpred = [random.choices(pop,dis)[0] for x in range(len(labels))]
+    return randpred
+
+def calcoverlap(labels,predicted, aclass,c,root,learning_rate,num_epochs):
+    res = [0,0,0,0]
+    y = 0
+    for x in range(len(labels)):
+        pred, label = np.array(predicted[x]),np.array(labels[x])
+        data_lab = np.argwhere(label == aclass)
+        data_pred = np.argwhere(pred == aclass)
+        motifs_lab = consecutive(data_lab)
+        motifs_pred = consecutive(data_pred)
+        for motif in motifs_lab:
+            y += 1
+            coin = sum(res)
+            for motif_pred in motifs_pred:                                          
+                if 0 < len(np.intersect1d(motif, motif_pred)):
+                    protoverlap = np.count_nonzero(pred[motif] == aclass)
+                    lenpred = len(motif_pred)
+                    lenlab = len(motif)
+                    if protoverlap > 0:
+                        percent = protoverlap / lenpred
+                    else: percent = 0
+                    if lenlab>lenpred: 
+                        percent = protoverlap / lenlab
+                    if percent == 1:
+                        res[3] += 1
+                    elif percent > 0.7:
+                        res[2] += 1
+                    elif protoverlap > 3:
+                        res[1] += 1
+                    else: res[0] += 1 
+                    break
+            if coin == sum(res): res[0] += 1 
+    plt.rcParams["figure.figsize"] = [12,6]    
+
+    plt.rcParams.update({'font.size': 16})
+    fig_labels = ['Overlapping hits < 3', 'Overlapping hits > 3', 'Large overlap:\n>70% sequence overlap', 'Exact matches']        
+    plt.figure()
+    plt.pie(res, labels=fig_labels, autopct=lambda p: '{:.2f}%({:.0f})'.format(p,(p/100)*sum(res)))
+    plt.title('Overlap of class: ' + c[aclass])
+    plt.savefig(root + 'Pictures\\' + c[aclass] + '_lr_' + str(learning_rate) + '_epochs_' + str(num_epochs) + '.png')
+    plt.close()
+    
+def consecutive(data, stepsize=1):
+    data = data.reshape(len(data))
+    res = np.split(data, np.where(np.diff(data) != stepsize)[0]+1)   
+    return res

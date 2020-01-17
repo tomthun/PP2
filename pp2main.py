@@ -17,18 +17,18 @@ from CNN import SimpleCNN
 import sklearn.metrics as metrics
 import torch
 from Plots import create_plts
-params = {'batch_size': 50,
+params = {'batch_size': 100,
           'shuffle': True,
           'num_workers': 0}
 torch.manual_seed(1)
 splits = 5 # specify the number of wanted data splits, counting starts at 0,      
            # e.g 4 splits = [0,1,2,3,4] splits (5)
-form = '1024' # either '64'or '1024': select 64 or 1024 embbedings 
+form = '64' # either '64'or '1024': select 64 or 1024 embbedings 
 printafterepoch = 5
 no_crf = True # crf or no crf
 onehot = True # with or without onehotencoding
-num_epochs = 61
-learning_rate = 1e-2
+num_epochs = 51
+learning_rate = 1e-3
 num_classes = 3 # number of classes (currently 3: NES,NLS and no signal)
 inp, outp = int(form), num_classes # size of input and output layers (+22 if onehotencoding!!)
 if onehot: inp += 22
@@ -42,21 +42,21 @@ def cross_valid():
     labels, predicted = [],[]
     for split in range(splits):
         if split == splits:
-            label_predicted_batch = main(split,0,form,dic)
+            label_predicted_batch, out = main(split,0,form,dic)
         else:
-            label_predicted_batch = main(split,form,dic)
+            label_predicted_batch, out = main(split,form,dic)
         labels.append(label_predicted_batch[0])
         predicted.append(label_predicted_batch[1])
     create_plts(1, root, learning_rate, num_epochs, benchmark_crossvalid = True, 
-                labels = sum(labels,[]), predictions = sum(predicted,[]), typ = str(inp))
+                labels = labels, predictions = predicted, typ = str(inp))
     return labels,predicted
 
 def main(split, form, dic):
-    train_loader, val_loader, bench_loader = splitdata(dic, split)
+    train_loader, val_loader = splitdata(dic, split)
     model = SimpleCNN(num_classes, inp, outp, dev).to(dev)
-    train(model, train_loader, val_loader, num_epochs, learning_rate, dev, class_weights)
-    _, _, _, _, label_predicted_batch = validate(bench_loader, model, dev, class_weights)
-    return label_predicted_batch
+    _,out,_ = train(model, train_loader, val_loader, num_epochs, learning_rate, dev, class_weights)
+    _, _, _, _, _, label_predicted_batch = validate(val_loader, model, dev, class_weights)
+    return label_predicted_batch, out
 
 def pltseab(dic):
     plt.rcParams.update({'font.size': 16})
@@ -142,34 +142,21 @@ def splitdata (dic, split):
     end = len(dic['Header'])
     ovload = (end%(splits))
     border = int((end-ovload)/(splits))
-    if splits > (split+2):
+    if splits > (split+1):
         validation = {k:dic[k][border*(split):border*(split+1)]
         for k in ('Header', 'Sequence', 'Labels', 'Data')}
-        benchmark = {k:dic[k][border*(split+1):border*(split+2)]
+        train = {k:dic[k][:border*split] + dic[k][border*(split+1):end]
         for k in ('Header', 'Sequence', 'Labels', 'Data')}
-        train = {k:dic[k][:border*split] + dic[k][border*(split+2):end]
-        for k in ('Header', 'Sequence', 'Labels', 'Data')}
-    elif splits == (split+2):
-        validation = {k:dic[k][border*split:border*(split+1)]
-        for k in ('Header', 'Sequence', 'Labels', 'Data')}
-        benchmark = {k:dic[k][border*(split+1):end]
-        for k in ('Header', 'Sequence', 'Labels', 'Data')}
-        train = {k:dic[k][0:border*split]
-        for k in ('Header', 'Sequence', 'Labels', 'Data')}    
     else:        
         validation = {k:dic[k][border*split:end]
         for k in ('Header', 'Sequence', 'Labels', 'Data')}
-        benchmark = {k:dic[k][0:border]
-        for k in ('Header', 'Sequence', 'Labels', 'Data')}
-        train = {k:dic[k][border:border*(split)]
+        train = {k:dic[k][border:border*split]
         for k in ('Header', 'Sequence', 'Labels', 'Data')}
     train_dataset = CustomDataset(train)
     train_loader = DataLoader(train_dataset, **params, collate_fn=my_collate)    
     val_dataset = CustomDataset(validation)
     val_loader = DataLoader(val_dataset, **params, collate_fn=my_collate) 
-    bench_dataset = CustomDataset(benchmark)
-    bench_loader = DataLoader(bench_dataset, **params, collate_fn=my_collate) 
-    return train_loader, val_loader, bench_loader
+    return train_loader, val_loader
  
 def my_collate(batch):
     seq = [item[3] for item in batch]
@@ -183,16 +170,16 @@ def my_collate(batch):
 # Train / validate data
 # =============================================================================
 
-def train(model, train_loader, validation_loader, num_epochs, learning_rate, dev, class_weights):
+def train(model, train_loader, val_loader, num_epochs, learning_rate, dev, class_weights):
     print('Starting to learn...')
     total_step = len(train_loader)
     out_params = []
     criterion = torch.nn.CrossEntropyLoss(weight = class_weights, ignore_index = -1, reduction = 'mean')
-    optimizer = torch.optim.ASGD(model.parameters(), lr=learning_rate)
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, amsgrad=True ,weight_decay=1e-6)
     for epoch in range(num_epochs):
         loss_train_list = []  
         label_predicted_batch = [[],[],[],[]]      
-        for i, (train, labels, protein, seq, mask ) in enumerate(train_loader):
+        for i, (train, labels, protein, seq, mask) in enumerate(train_loader):
             # Run the forward pass      
             train, labels, mask  = train.to(dev), labels.to(dev), mask.to(dev)  
             outputs = model(train)
@@ -219,13 +206,13 @@ def train(model, train_loader, validation_loader, num_epochs, learning_rate, dev
                 loss_train_list.append(loss.item())                  
         # and print the results
         if (epoch%printafterepoch) == 0:
-            mcc_train, cm_train, acc = calcMCCbatch(label_predicted_batch[0], label_predicted_batch[1])
+            mcc_train, cm_train, acc, rep = calcMCCbatch(label_predicted_batch[0], label_predicted_batch[1], printreport=False)
             loss_ave = sum(loss_train_list)/len(loss_train_list)
             print('Epoch [{}/{}], Step [{}/{}], Loss: {:.4f}, Accuracy: {:.2f}%, MCC: {:.2f}'
                   .format(epoch+1, num_epochs, i + 1, total_step, loss_ave,
                           acc, mcc_train))
-            acc_valid, mcc_valid, loss_valid, cm_valid, label_predicted_batch_val = validate(validation_loader, model, dev, class_weights)
-            out_params.append([mcc_train, mcc_valid, acc, acc_valid,loss_ave, loss_valid,
+            acc_valid, mcc_valid, loss_valid, cm_valid,rep_val, label_predicted_batch_val = validate(val_loader, model, dev, class_weights)
+            out_params.append([mcc_train, mcc_valid, acc, acc_valid,loss_ave, loss_valid, rep, rep_val,
                                cm_train, cm_valid])
         model.train()
     return model, out_params, label_predicted_batch
@@ -253,10 +240,10 @@ def validate(val_loader, model, dev, class_weights):
             # calculate quality measurements
             label_predicted_batch = orgaBatch(labels, predicted, label_predicted_batch, mask, protein, seq)
             loss_list.append(loss.item())         
-        mcc, cm, acc = calcMCCbatch(label_predicted_batch[0], label_predicted_batch[1])
+        mcc, cm, acc, rep = calcMCCbatch(label_predicted_batch[0], label_predicted_batch[1])
         loss_ave = sum(loss_list)/len(loss_list)
         print('Accuracy of the model on the validation proteins is: {:.2f}%, Loss:{:.3f} and MCC is: {:.2f}'.format(acc,loss_ave,mcc))
-    return acc, mcc, loss_ave, cm, label_predicted_batch
+    return acc, mcc, loss_ave, cm, rep ,label_predicted_batch
 
 # =============================================================================
 # Helper functions
@@ -273,14 +260,17 @@ def orgaBatch (labels, predicted, label_predicted_batch, mask, protein, seq):
         label_predicted_batch[3].append(seq[x])
     return label_predicted_batch
 
-def calcMCCbatch (labels_batch, predicted_batch):
+def calcMCCbatch (labels_batch, predicted_batch, printreport=True):
 #   calculate MCC over given batches of an epoch in training/validation 
     x = sum(predicted_batch, [])
     y = sum(labels_batch,[])
     mcc = metrics.matthews_corrcoef(x, y)
     cm = metrics.confusion_matrix(x, y,  [0, 1, 2]) #[0, 1, 2, 3, 4, 5]) 
     acc = metrics.accuracy_score(x,y)
-    return mcc,cm,acc
+    report = metrics.classification_report(x,y)
+    if  printreport:
+        print(report)
+    return mcc,cm,acc,report
 
 # =============================================================================
 # Execution
